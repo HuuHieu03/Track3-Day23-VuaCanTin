@@ -192,7 +192,10 @@ def answer_node(state: AgentState) -> dict:
 
     context_text = "\n\n".join(context_parts)
     llm = get_llm(temperature=0.0)
-    prompt_content = f"Context:\n{context_text}\n\nPlease generate the final customer support answer:"
+    prompt_content = (
+        f"Context:\n{context_text}\n\n"
+        "Please generate the final customer support answer:"
+    )
     messages = [
         SystemMessage(content=ANSWER_SYSTEM_PROMPT),
         HumanMessage(content=prompt_content),
