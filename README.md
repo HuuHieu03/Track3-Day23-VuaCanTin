@@ -55,7 +55,7 @@ cp .env.example .env
 
 ## Understanding `scenarios.jsonl`
 
-The file `data/sample/scenarios.jsonl` contains **7 sample scenarios** your graph must handle:
+The file `data/sample/scenarios.jsonl` contains **9 sample scenarios** your graph must handle:
 
 ```jsonl
 {"id":"S01_simple",      "query":"How do I reset my password?",                          "expected_route":"simple"}
@@ -65,6 +65,8 @@ The file `data/sample/scenarios.jsonl` contains **7 sample scenarios** your grap
 {"id":"S05_error",       "query":"Timeout failure while processing request",              "expected_route":"error"}
 {"id":"S06_delete",      "query":"Delete customer account after support verification",    "expected_route":"risky"}
 {"id":"S07_dead_letter", "query":"System failure cannot recover after multiple attempts", "expected_route":"error", "max_attempts":1}
+{"id":"S08_custom",      "query":"The previous request timed out; look up order status...", "expected_route":"tool"}
+{"id":"S09_complex",     "query":"Look up an order, refund it, and email confirmation",     "expected_route":"risky"}
 ```
 
 ### What each field means
@@ -111,7 +113,7 @@ Your `classify_node` should use an LLM to classify intent. Design a prompt that 
 You can add extra lines to `scenarios.jsonl` to test edge cases:
 
 ```jsonl
-{"id":"S08_custom","query":"Cancel my subscription immediately","expected_route":"risky","requires_approval":true,"tags":["custom"]}
+{"id":"S10_example","query":"Cancel my subscription immediately","expected_route":"risky","requires_approval":true,"tags":["custom"]}
 ```
 
 The grading script will also test with scenarios you haven't seen.
