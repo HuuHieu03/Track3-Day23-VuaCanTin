@@ -11,9 +11,11 @@ LLM REQUIREMENT:
 
 from __future__ import annotations
 
+import os
 from typing import Literal
 
 from langchain_core.messages import HumanMessage, SystemMessage
+from langgraph.types import interrupt
 from pydantic import BaseModel, Field
 
 from .llm import get_llm
@@ -235,12 +237,25 @@ def risky_action_node(state: AgentState) -> dict:
     """Prepare a risky action for human approval.
 
     Describe the proposed action and why it requires approval.
-
-    Note: You may need to add 'proposed_action' to AgentState if not present.
-
-    Return: {"proposed_action": str, "events": [make_event(...)]}
     """
-    raise NotImplementedError("TODO(student): implement risky action preparation")
+    query = state.get("query", "").strip()
+    risk_level = state.get("risk_level", "high")
+    proposed_action = (
+        f"Proposed action: '{query}'. This action has side effects "
+        f"(risk_level={risk_level}) and requires human approval before execution."
+    )
+
+    return {
+        "proposed_action": proposed_action,
+        "events": [
+            make_event(
+                "risky_action",
+                "completed",
+                "proposed action prepared for approval",
+                risk_level=risk_level,
+            )
+        ],
+    }
 
 
 def approval_node(state: AgentState) -> dict:
@@ -248,10 +263,36 @@ def approval_node(state: AgentState) -> dict:
 
     Default behavior: mock approval (approved=True) so tests and CI run offline.
     Extension: if env LANGGRAPH_INTERRUPT=true, use langgraph.types.interrupt() for real HITL.
-
-    Return: {"approval": {"approved": bool, "reviewer": str, "comment": str}, "events": [make_event(...)]}
     """
-    raise NotImplementedError("TODO(student): implement approval with mock default")
+    proposed_action = state.get("proposed_action", "")
+
+    if os.getenv("LANGGRAPH_INTERRUPT", "").lower() == "true":
+        decision = interrupt(
+            {"proposed_action": proposed_action, "message": "Approve this action?"}
+        )
+        approval = {
+            "approved": bool(decision.get("approved", False)),
+            "reviewer": decision.get("reviewer", "human-reviewer"),
+            "comment": decision.get("comment", ""),
+        }
+    else:
+        approval = {
+            "approved": True,
+            "reviewer": "mock-reviewer",
+            "comment": "auto-approved for offline run",
+        }
+
+    return {
+        "approval": approval,
+        "events": [
+            make_event(
+                "approval",
+                "completed",
+                f"approval decision: approved={approval['approved']}",
+                **approval,
+            )
+        ],
+    }
 
 
 def retry_or_fallback_node(state: AgentState) -> dict:
