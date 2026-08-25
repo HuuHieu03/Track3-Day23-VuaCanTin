@@ -12,9 +12,17 @@ Usage in nodes:
 from __future__ import annotations
 
 import os
+from typing import TYPE_CHECKING
+
+from dotenv import load_dotenv
+
+if TYPE_CHECKING:
+    from langchain_core.language_models.chat_models import BaseChatModel
+
+load_dotenv()
 
 
-def get_llm(model: str | None = None, temperature: float = 0.0):
+def get_llm(model: str | None = None, temperature: float = 0.0) -> BaseChatModel:
     """Create an LLM client from environment configuration.
 
     Checks for API keys in this order:
@@ -24,6 +32,7 @@ def get_llm(model: str | None = None, temperature: float = 0.0):
 
     Override model with the `model` parameter or LLM_MODEL env var.
     """
+    load_dotenv()
     if os.getenv("GEMINI_API_KEY"):
         try:
             from langchain_google_genai import ChatGoogleGenerativeAI
