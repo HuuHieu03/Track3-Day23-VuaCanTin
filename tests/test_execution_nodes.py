@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from copy import deepcopy
-from typing import Any
 
 import pytest
 
@@ -102,7 +101,7 @@ def test_evaluate_node_uses_structured_llm_judge(monkeypatch: pytest.MonkeyPatch
 def test_evaluate_node_falls_back_when_llm_is_unavailable(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    def unavailable_llm(**_: Any) -> None:
+    def unavailable_llm(**_: object) -> None:
         raise RuntimeError("provider unavailable")
 
     monkeypatch.setattr(llm_module, "get_llm", unavailable_llm)

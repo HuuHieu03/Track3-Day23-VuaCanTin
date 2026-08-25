@@ -1,15 +1,14 @@
 from __future__ import annotations
 
-from typing import Any
-
 import pytest
+from langgraph.graph.state import CompiledStateGraph
 
 from langgraph_agent_lab import nodes
 from langgraph_agent_lab.graph import build_graph
 from langgraph_agent_lab.state import AgentState, Route, Scenario, initial_state, make_event
 
 
-def classify_as_error(_: AgentState) -> dict[str, Any]:
+def classify_as_error(_: AgentState) -> dict[str, object]:
     return {
         "route": Route.ERROR.value,
         "risk_level": "low",
@@ -17,7 +16,7 @@ def classify_as_error(_: AgentState) -> dict[str, Any]:
     }
 
 
-def deterministic_answer(_: AgentState) -> dict[str, Any]:
+def deterministic_answer(_: AgentState) -> dict[str, object]:
     return {
         "final_answer": "The transient failure was recovered.",
         "events": [make_event("answer", "completed", "stubbed grounded answer")],
@@ -25,14 +24,16 @@ def deterministic_answer(_: AgentState) -> dict[str, Any]:
 
 
 @pytest.fixture
-def error_graph(monkeypatch: pytest.MonkeyPatch) -> Any:
+def error_graph(monkeypatch: pytest.MonkeyPatch) -> CompiledStateGraph:
     """Build the real Role 1 graph with only unfinished Role 2 nodes stubbed."""
     monkeypatch.setattr(nodes, "classify_node", classify_as_error)
     monkeypatch.setattr(nodes, "answer_node", deterministic_answer)
     return build_graph()
 
 
-def test_error_route_recovers_after_two_retry_visits(error_graph: Any) -> None:
+def test_error_route_recovers_after_two_retry_visits(
+    error_graph: CompiledStateGraph,
+) -> None:
     scenario = Scenario(
         id="integration-retry",
         query="Timeout failure while processing request",
@@ -63,7 +64,9 @@ def test_error_route_recovers_after_two_retry_visits(error_graph: Any) -> None:
     assert "dead_letter" not in visited
 
 
-def test_error_route_reaches_dead_letter_at_retry_limit(error_graph: Any) -> None:
+def test_error_route_reaches_dead_letter_at_retry_limit(
+    error_graph: CompiledStateGraph,
+) -> None:
     scenario = Scenario(
         id="integration-dead-letter",
         query="System failure cannot recover after multiple attempts",
