@@ -14,11 +14,28 @@ def _markdown_cell(value: object) -> str:
 
 def render_report(metrics: MetricsReport) -> str:
     """Render a complete, deterministic Markdown report from ``metrics``."""
-    resume_status = "đã chứng minh thành công" if metrics.resume_success else "chưa được chứng minh"
+    resume_status = (
+        "Đã kiểm chứng luồng tiếp tục sau sự cố."
+        if metrics.resume_success
+        else (
+            "SQLite đã được kiểm chứng lưu và đọc lại state qua checkpointer instance mới. "
+            "Chưa có bài kiểm thử tiếp tục graph sau sự cố, nên `resume_success` vẫn là `false`."
+        )
+    )
+    retry_after_success = [
+        item.scenario_id
+        for item in metrics.scenario_metrics
+        if any("Retry attempt" in error and "SUCCESS:" in error for error in item.errors)
+    ]
     lines = [
         "# Báo cáo Lab Day 08",
         "",
-        "## 1. Tổng hợp metrics",
+        "## 1. Thông tin nhóm",
+        "",
+        "- Mô hình thực hiện: nhóm 5 thành viên.",
+        "- Người tổng hợp kiểm thử, metrics và báo cáo: Role 5.",
+        "",
+        "## 2. Tổng hợp metrics",
         "",
         "| Chỉ số | Giá trị |",
         "|---|---:|",
@@ -29,7 +46,7 @@ def render_report(metrics: MetricsReport) -> str:
         f"| Tổng số lần interrupt | {metrics.total_interrupts} |",
         f"| Khôi phục thành công | {'Có' if metrics.resume_success else 'Không'} |",
         "",
-        "## 2. Kết quả scenario",
+        "## 3. Kết quả scenario",
         "",
         "| Scenario | Route mong đợi | Route thực tế | Thành công | Số node | Retry | "
         "Interrupt | Approval | Latency (ms) | Lỗi |",
@@ -60,7 +77,7 @@ def render_report(metrics: MetricsReport) -> str:
     lines.extend(
         [
             "",
-            "## 3. Kiến trúc và state",
+            "## 4. Kiến trúc và state",
             "",
             "StateGraph đưa yêu cầu qua `intake` và `classify`, sau đó chọn nhánh trả lời trực "
             "tiếp, gọi tool, hỏi lại, xét duyệt tác vụ rủi ro hoặc xử lý lỗi. Kết quả từ tool "
@@ -71,7 +88,7 @@ def render_report(metrics: MetricsReport) -> str:
             "phục vụ audit như `messages`, `tool_results`, `errors` và `events` dùng reducer nối "
             "thêm để giữ lại lịch sử qua từng node.",
             "",
-            "## 4. Phân tích lỗi",
+            "## 5. Phân tích lỗi",
             "",
             "1. Lỗi tạm thời từ tool hoặc provider có thể tạo ra kết quả thiếu. Graph ghi nhận "
             "lỗi và chỉ retry khi `attempt < max_attempts`; yêu cầu hết lượt sẽ đi vào "
@@ -79,13 +96,32 @@ def render_report(metrics: MetricsReport) -> str:
             "2. Tác vụ rủi ro không được gọi tool trước khi có approval. Metrics về approval giúp "
             "phát hiện scenario cần xét duyệt nhưng không có bằng chứng xét duyệt.",
             "",
-            "## 5. Persistence và recovery",
+        ]
+    )
+    if retry_after_success:
+        scenario_ids = ", ".join(retry_after_success)
+        lines.extend(
+            [
+                f"Benchmark ghi nhận retry sau kết quả `SUCCESS` ở {scenario_ids}. Điều này cho "
+                "thấy LLM-as-judge có thể tạo thêm vòng lặp dù workflow vẫn hoàn tất.",
+                "",
+            ]
+        )
+    lines.extend(
+        [
+            "## 6. Persistence và recovery",
             "",
-            f"Kết quả kiểm tra khôi phục checkpoint: {resume_status}.",
+            resume_status,
             "Mỗi scenario dùng một thread ID ổn định để có thể kiểm tra hoặc khôi phục lịch sử "
             "checkpoint.",
             "",
-            "## 6. Kế hoạch hoàn thiện",
+            "## 7. Phần mở rộng",
+            "",
+            "Graph có thể xuất Mermaid tại `outputs/graph.mmd`. Bộ dữ liệu có thêm S08 và S09 "
+            "để kiểm tra độ ưu tiên route. SQLite checkpointer và approval interrupt đã được tích "
+            "hợp; khôi phục sau sự cố thực tế vẫn cần một bài kiểm thử resume riêng.",
+            "",
+            "## 8. Kế hoạch hoàn thiện",
             "",
             "Các việc tiếp theo gồm đặt timeout và retry cho provider, xác thực người phê duyệt, "
             "kiểm thử khôi phục checkpoint trên ổ đĩa, đồng thời theo dõi latency và lỗi.",

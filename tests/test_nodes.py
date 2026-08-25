@@ -4,10 +4,14 @@ These are pure functions (state in, partial-state-update dict out), so they're
 tested directly without building the full graph.
 """
 
+from typing import Never
+
+import pytest
+
 from langgraph_agent_lab.nodes import approval_node, risky_action_node
 
 
-def test_risky_action_node_describes_the_proposed_action():
+def test_risky_action_node_describes_the_proposed_action() -> None:
     state = {"query": "Refund this customer and send confirmation email", "risk_level": "high"}
 
     result = risky_action_node(state)
@@ -17,7 +21,7 @@ def test_risky_action_node_describes_the_proposed_action():
     assert result["events"][0]["event_type"] == "completed"
 
 
-def test_risky_action_node_flags_high_risk_in_event_metadata():
+def test_risky_action_node_flags_high_risk_in_event_metadata() -> None:
     state = {"query": "Delete customer account after support verification", "risk_level": "high"}
 
     result = risky_action_node(state)
@@ -25,7 +29,7 @@ def test_risky_action_node_flags_high_risk_in_event_metadata():
     assert result["events"][0]["metadata"]["risk_level"] == "high"
 
 
-def test_approval_node_default_mock_approves(monkeypatch):
+def test_approval_node_default_mock_approves(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("LANGGRAPH_INTERRUPT", raising=False)
     state = {"proposed_action": "Refund $50 to customer 123"}
 
@@ -36,10 +40,12 @@ def test_approval_node_default_mock_approves(monkeypatch):
     assert result["events"][0]["node"] == "approval"
 
 
-def test_approval_node_does_not_interrupt_when_flag_unset(monkeypatch):
+def test_approval_node_does_not_interrupt_when_flag_unset(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.delenv("LANGGRAPH_INTERRUPT", raising=False)
 
-    def boom(_value):
+    def boom(_value: object) -> Never:
         raise AssertionError("interrupt() must not be called when LANGGRAPH_INTERRUPT is unset")
 
     monkeypatch.setattr("langgraph_agent_lab.nodes.interrupt", boom)
@@ -49,7 +55,9 @@ def test_approval_node_does_not_interrupt_when_flag_unset(monkeypatch):
     assert result["approval"]["approved"] is True
 
 
-def test_approval_node_uses_interrupt_resume_value_when_flag_enabled(monkeypatch):
+def test_approval_node_uses_interrupt_resume_value_when_flag_enabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setenv("LANGGRAPH_INTERRUPT", "true")
     monkeypatch.setattr(
         "langgraph_agent_lab.nodes.interrupt",

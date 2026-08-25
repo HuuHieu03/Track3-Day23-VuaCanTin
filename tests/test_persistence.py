@@ -6,28 +6,29 @@ database file (the core "does persistence actually persist" guarantee).
 """
 
 import sqlite3
+from pathlib import Path
 
 import pytest
 
 from langgraph_agent_lab.persistence import build_checkpointer
 
 
-def test_build_checkpointer_none_returns_none():
+def test_build_checkpointer_none_returns_none() -> None:
     assert build_checkpointer("none") is None
 
 
-def test_build_checkpointer_memory_returns_saver():
+def test_build_checkpointer_memory_returns_saver() -> None:
     from langgraph.checkpoint.memory import MemorySaver
 
     assert isinstance(build_checkpointer("memory"), MemorySaver)
 
 
-def test_build_checkpointer_unknown_kind_raises():
+def test_build_checkpointer_unknown_kind_raises() -> None:
     with pytest.raises(ValueError):
         build_checkpointer("bogus")
 
 
-def test_build_checkpointer_sqlite_creates_wal_mode_db(tmp_path):
+def test_build_checkpointer_sqlite_creates_wal_mode_db(tmp_path: Path) -> None:
     db_path = tmp_path / "checkpoints.sqlite"
 
     build_checkpointer("sqlite", database_url=str(db_path))
@@ -39,7 +40,7 @@ def test_build_checkpointer_sqlite_creates_wal_mode_db(tmp_path):
     assert mode.lower() == "wal"
 
 
-def test_build_checkpointer_sqlite_persists_state_across_instances(tmp_path):
+def test_build_checkpointer_sqlite_persists_state_across_instances(tmp_path: Path) -> None:
     from langgraph.checkpoint.base import empty_checkpoint
 
     db_path = tmp_path / "checkpoints.sqlite"

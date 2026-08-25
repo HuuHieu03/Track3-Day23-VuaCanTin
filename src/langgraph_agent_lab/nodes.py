@@ -12,7 +12,7 @@ LLM REQUIREMENT:
 from __future__ import annotations
 
 import os
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.types import interrupt
@@ -152,7 +152,7 @@ def classify_node(state: AgentState) -> dict:
         SystemMessage(content=CLASSIFY_SYSTEM_PROMPT),
         HumanMessage(content=f"User Query: {query}"),
     ]
-    result: ClassificationResult = structured_llm.invoke(messages)
+    result = cast(ClassificationResult, structured_llm.invoke(messages))
 
     route = result.route
     risk_level = "high" if route == "risky" else result.risk_level
@@ -244,6 +244,7 @@ def evaluate_node(state: AgentState) -> dict[str, Any]:
     latest_result = tool_results[-1] if tool_results else ""
     heuristic_result, heuristic_reason = _heuristic_tool_evaluation(latest_result)
     fallback_error_type: str | None = None
+    evaluation_result: EvaluationResult
 
     # Explicit errors and empty results are deterministic safety failures. Avoid an
     # unnecessary model call and never let a judge turn a known failure into success.

@@ -20,7 +20,7 @@ def build_graph(
 ) -> CompiledStateGraph:
     """Build and compile the LangGraph workflow.
 
-    TODO(student): Build the complete graph with this architecture:
+    The implemented graph follows this architecture:
 
     START → intake → classify → [conditional: route_after_classify]
       simple       → answer → finalize → END

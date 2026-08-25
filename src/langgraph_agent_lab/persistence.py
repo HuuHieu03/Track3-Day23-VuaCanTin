@@ -3,12 +3,17 @@
 from __future__ import annotations
 
 import sqlite3
-from typing import Any
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from langgraph.checkpoint.base import BaseCheckpointSaver
 
 DEFAULT_SQLITE_PATH = "outputs/checkpoints.sqlite"
 
 
-def build_checkpointer(kind: str = "memory", database_url: str | None = None) -> Any | None:
+def build_checkpointer(
+    kind: str = "memory", database_url: str | None = None
+) -> BaseCheckpointSaver | None:
     """Return a LangGraph checkpointer.
 
     For SQLite: connects with sqlite3, enables WAL mode, and hands the
@@ -31,6 +36,6 @@ def build_checkpointer(kind: str = "memory", database_url: str | None = None) ->
         return saver
     if kind == "postgres":
         raise NotImplementedError(
-            "TODO(student): implement Postgres checkpointer (optional extension)"
+            "Postgres checkpointer is not implemented; install it as an optional extension"
         )
     raise ValueError(f"Unknown checkpointer kind: {kind}")

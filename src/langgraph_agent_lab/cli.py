@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from time import perf_counter
 from typing import Annotated
 
 import typer
-import yaml
+import yaml  # type: ignore[import-untyped]
+from langchain_core.runnables import RunnableConfig
 
 from .graph import build_graph
 from .metrics import MetricsReport, metric_from_state, summarize_metrics, write_metrics
@@ -32,9 +34,20 @@ def run_scenarios(
     metrics = []
     for scenario in scenarios:
         state = initial_state(scenario)
-        run_config = {"configurable": {"thread_id": state["thread_id"]}}
+        run_config: RunnableConfig = {
+            "configurable": {"thread_id": state["thread_id"]}
+        }
+        started_at = perf_counter()
         final_state = graph.invoke(state, config=run_config)
-        metrics.append(metric_from_state(final_state, scenario.expected_route.value, scenario.requires_approval))
+        elapsed_ms = max(1, round((perf_counter() - started_at) * 1000))
+        scenario_metric = metric_from_state(
+            final_state,
+            scenario.expected_route.value,
+            scenario.requires_approval,
+        )
+        if scenario_metric.latency_ms == 0:
+            scenario_metric.latency_ms = elapsed_ms
+        metrics.append(scenario_metric)
     report = summarize_metrics(metrics)
     write_metrics(report, output)
     if cfg.get("report_path"):

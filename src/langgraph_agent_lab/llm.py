@@ -35,7 +35,9 @@ def get_llm(model: str | None = None, temperature: float = 0.0) -> BaseChatModel
     load_dotenv()
     if os.getenv("GEMINI_API_KEY"):
         try:
-            from langchain_google_genai import ChatGoogleGenerativeAI
+            from langchain_google_genai import (  # type: ignore[import-not-found]
+                ChatGoogleGenerativeAI,
+            )
         except ImportError as exc:
             raise RuntimeError("Install: pip install langchain-google-genai") from exc
         return ChatGoogleGenerativeAI(
@@ -49,14 +51,15 @@ def get_llm(model: str | None = None, temperature: float = 0.0) -> BaseChatModel
             from langchain_openai import ChatOpenAI
         except ImportError as exc:
             raise RuntimeError("Install: pip install langchain-openai") from exc
+        openai_model = model or os.getenv("LLM_MODEL") or "gpt-4o-mini"
         return ChatOpenAI(
-            model=model or os.getenv("LLM_MODEL", "gpt-4o-mini"),
+            model=openai_model,
             temperature=temperature,
         )
 
     if os.getenv("ANTHROPIC_API_KEY"):
         try:
-            from langchain_anthropic import ChatAnthropic
+            from langchain_anthropic import ChatAnthropic  # type: ignore[import-not-found]
         except ImportError as exc:
             raise RuntimeError("Install: pip install langchain-anthropic") from exc
         return ChatAnthropic(

@@ -45,9 +45,11 @@ def test_render_report_includes_summary_results_and_analysis() -> None:
     assert "| S01_simple | simple | simple | Có |" in rendered
     assert "| S02_risky | risky | Chưa có | Không |" in rendered
     assert "provider \\| timeout" in rendered
-    assert "## 3. Kiến trúc và state" in rendered
-    assert "## 4. Phân tích lỗi" in rendered
-    assert "## 6. Kế hoạch hoàn thiện" in rendered
+    assert "## 1. Thông tin nhóm" in rendered
+    assert "## 4. Kiến trúc và state" in rendered
+    assert "## 5. Phân tích lỗi" in rendered
+    assert "## 7. Phần mở rộng" in rendered
+    assert "## 8. Kế hoạch hoàn thiện" in rendered
 
 
 def test_write_report_creates_parent_directory(tmp_path: Path) -> None:

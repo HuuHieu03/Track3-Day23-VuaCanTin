@@ -2,79 +2,56 @@
 
 ## 1. Thông tin nhóm
 
-- Vai trò phụ trách báo cáo: Role 5, QA, metrics và viết tài liệu kỹ thuật
-- Commit nền đã tích hợp: `3265a9a` (`Role 1 Finished`)
-- Ngày cập nhật: 2026-08-25
-- Trạng thái: Bản nháp, còn chờ kết quả chạy sau khi tích hợp Role 2, 3 và 4
+- Mô hình thực hiện: nhóm 5 thành viên.
+- Người tổng hợp kiểm thử, metrics và báo cáo: Role 5.
 
-## 2. Kiến trúc
+## 2. Tổng hợp metrics
 
-Hệ thống dùng LangGraph `StateGraph`, gồm 11 workflow node và 19 edge. Mỗi yêu cầu bắt đầu theo luồng `START -> intake -> classify`, sau đó được chuyển vào một trong năm nhánh:
+| Chỉ số | Giá trị |
+|---|---:|
+| Tổng số scenario | 9 |
+| Tỷ lệ thành công | 100.00% |
+| Số node trung bình | 6.67 |
+| Tổng số lần retry | 4 |
+| Tổng số lần interrupt | 3 |
+| Khôi phục thành công | Không |
 
-```text
-simple       -> answer -> finalize -> END
-tool         -> tool -> evaluate -> answer/retry
-missing_info -> clarify -> finalize -> END
-risky        -> risky_action -> approval -> tool/clarify
-error        -> retry -> tool/dead_letter
-```
+## 3. Kết quả scenario
 
-Node `evaluate` quyết định trả lời hay thử lại. Vòng lặp được giới hạn bằng `max_attempts`; khi hết lượt, `route_after_retry` chuyển yêu cầu sang `dead_letter`. Nhờ đó, các nhánh đều có đường kết thúc tại `finalize -> END`. Graph nhận checkpointer qua cấu hình và dùng `thread_id` ổn định cho từng scenario. Sơ đồ Mermaid nằm trong `outputs/graph.mmd`.
+| Scenario | Route mong đợi | Route thực tế | Thành công | Số node | Retry | Interrupt | Approval | Latency (ms) | Lỗi |
+|---|---|---|:---:|---:|---:|---:|:---:|---:|---|
+| S01_simple | simple | simple | Có | 4 | 0 | 0 | Không yêu cầu | 5369 | Không có |
+| S02_tool | tool | tool | Có | 6 | 0 | 0 | Không yêu cầu | 2834 | Không có |
+| S03_missing | missing_info | missing_info | Có | 4 | 0 | 0 | Không yêu cầu | 1634 | Không có |
+| S04_risky | risky | risky | Có | 8 | 0 | 1 | Đã ghi nhận | 2768 | Không có |
+| S05_error | error | error | Có | 11 | 3 | 0 | Không yêu cầu | 2400 | Retry attempt 1 scheduled after: no tool result yet; Retry attempt 2 scheduled after: ERROR: transient tool failure on attempt 1.; Retry attempt 3 scheduled after: SUCCESS: transient tool failure recovered on attempt 2. |
+| S06_delete | risky | risky | Có | 8 | 0 | 1 | Đã ghi nhận | 2800 | Không có |
+| S07_dead_letter | error | error | Có | 5 | 1 | 0 | Không yêu cầu | 781 | Retry attempt 1 scheduled after: no tool result yet |
+| S08_custom | tool | tool | Có | 6 | 0 | 0 | Không yêu cầu | 2777 | Không có |
+| S09_complex | risky | risky | Có | 8 | 0 | 1 | Đã ghi nhận | 3076 | Không có |
 
-## 3. Cấu trúc state
+## 4. Kiến trúc và state
 
-| Trường | Cách cập nhật | Mục đích |
-|---|---|---|
-| `route`, `risk_level` | Ghi đè | Route và mức rủi ro hiện tại |
-| `attempt`, `max_attempts` | Ghi đè | Kiểm soát số lần retry |
-| `evaluation_result` | Ghi đè | Dữ liệu đầu vào cho nhánh sau bước đánh giá |
-| `pending_question` | Ghi đè | Câu hỏi làm rõ gửi cho người dùng |
-| `proposed_action`, `approval` | Ghi đè | Trạng thái xét duyệt tác vụ rủi ro |
-| `final_answer` | Ghi đè | Câu trả lời cuối cùng |
-| `messages` | Nối thêm | Lịch sử hội thoại |
-| `tool_results` | Nối thêm | Lịch sử kết quả từ tool |
-| `errors` | Nối thêm | Lịch sử lỗi và retry |
-| `events` | Nối thêm | Audit trail của từng node và nguồn dữ liệu cho metrics |
+StateGraph đưa yêu cầu qua `intake` và `classify`, sau đó chọn nhánh trả lời trực tiếp, gọi tool, hỏi lại, xét duyệt tác vụ rủi ro hoặc xử lý lỗi. Kết quả từ tool phải qua `evaluate`. Nếu kết quả chưa đạt, graph chỉ retry trong giới hạn; mọi nhánh kết thúc đều đi qua `finalize` trước `END`.
 
-Các trường ghi đè chỉ giữ quyết định mới nhất của workflow. Những trường lưu lịch sử dùng `Annotated[list, operator.add]`, vì vậy dữ liệu do node trước ghi lại không bị node sau thay thế.
-
-## 4. Kết quả scenario
-
-Chưa có kết quả chạy thật vì các node của Role 2, 3 và 4 chưa được tích hợp. Sau khi có `outputs/metrics.json`, bảng dưới đây phải được cập nhật từ tệp đó, không điền bằng ước lượng.
-
-| Scenario | Route mong đợi | Route thực tế | Thành công | Retry | Interrupt |
-|---|---|---|:---:|---:|---:|
-| S01_simple | simple | Chờ chạy | Chờ chạy | Chờ chạy | Chờ chạy |
-| S02_tool | tool | Chờ chạy | Chờ chạy | Chờ chạy | Chờ chạy |
-| S03_missing | missing_info | Chờ chạy | Chờ chạy | Chờ chạy | Chờ chạy |
-| S04_risky | risky | Chờ chạy | Chờ chạy | Chờ chạy | Chờ chạy |
-| S05_error | error | Chờ chạy | Chờ chạy | Chờ chạy | Chờ chạy |
-| S06_delete | risky | Chờ chạy | Chờ chạy | Chờ chạy | Chờ chạy |
-| S07_dead_letter | error | Chờ chạy | Chờ chạy | Chờ chạy | Chờ chạy |
-| S08_custom | tool | Chờ chạy | Chờ chạy | Chờ chạy | Chờ chạy |
-| S09_complex | risky | Chờ chạy | Chờ chạy | Chờ chạy | Chờ chạy |
-
-Các bằng chứng đã xác nhận:
-
-- Sau khi tích hợp Role 1, 27 test routing, state, metrics và report đã pass.
-- Graph biên dịch thành công với 11 workflow node và 19 edge.
-- Ruff và mypy đã pass trên phần cài đặt của Role 1 và các thay đổi của Role 5.
-- Sáu graph smoke test đã chạy tới `classify_node`, sau đó dừng vì node này chưa được Role 2 triển khai.
+Các trường `route`, `attempt` và `final_answer` dùng cách ghi đè. Những danh sách phục vụ audit như `messages`, `tool_results`, `errors` và `events` dùng reducer nối thêm để giữ lại lịch sử qua từng node.
 
 ## 5. Phân tích lỗi
 
-1. Lỗi tạm thời từ tool hoặc provider có thể tạo ra kết quả thiếu. Kết quả đó phải qua `evaluate`, sau đó chỉ được retry khi `attempt < max_attempts`. Yêu cầu hết lượt retry sẽ đi vào `dead_letter`, thay vì lặp vô hạn.
-2. Các tác vụ như hoàn tiền, xóa dữ liệu, hủy dịch vụ hoặc gửi email không được gọi tool trước khi có approval. Test và metrics tách `approval_required` khỏi `approval_observed`, nên báo cáo sẽ chỉ ra trường hợp cần xét duyệt nhưng không có bằng chứng xét duyệt.
-3. OpenAI key đã có trong `.env` và tệp này được Git bỏ qua. Tuy nhiên, tiến trình Python hiện chưa tự đọc `.env`. Role 2 cần bổ sung cách nạp cấu hình an toàn hoặc ghi rõ lệnh export biến môi trường trước khi chạy.
+1. Lỗi tạm thời từ tool hoặc provider có thể tạo ra kết quả thiếu. Graph ghi nhận lỗi và chỉ retry khi `attempt < max_attempts`; yêu cầu hết lượt sẽ đi vào `dead_letter`.
+2. Tác vụ rủi ro không được gọi tool trước khi có approval. Metrics về approval giúp phát hiện scenario cần xét duyệt nhưng không có bằng chứng xét duyệt.
 
-## 6. Bằng chứng persistence và recovery
+Benchmark ghi nhận retry sau kết quả `SUCCESS` ở S05_error. Điều này cho thấy LLM-as-judge có thể tạo thêm vòng lặp dù workflow vẫn hoàn tất.
 
-Graph đã biên dịch thành công với memory checkpointer. Mỗi scenario cũng có `thread_id` ổn định. Phần SQLite/WAL, phát lại lịch sử state và khôi phục sau sự cố còn chờ Role 4. Trước khi có bài kiểm tra recovery, `resume_success` phải giữ giá trị `false`.
+## 6. Persistence và recovery
+
+SQLite đã được kiểm chứng lưu và đọc lại state qua checkpointer instance mới. Chưa có bài kiểm thử tiếp tục graph sau sự cố, nên `resume_success` vẫn là `false`.
+Mỗi scenario dùng một thread ID ổn định để có thể kiểm tra hoặc khôi phục lịch sử checkpoint.
 
 ## 7. Phần mở rộng
 
-Role 1 đã xuất sơ đồ Mermaid vào `outputs/graph.mmd`. Hai scenario `S08_custom` và `S09_complex` kiểm tra thứ tự ưu tiên intent `tool > error` và `risky > tool`. Persistence trên ổ đĩa và HITL thực tế chưa được triển khai.
+Graph có thể xuất Mermaid tại `outputs/graph.mmd`. Bộ dữ liệu có thêm S08 và S09 để kiểm tra độ ưu tiên route. SQLite checkpointer và approval interrupt đã được tích hợp; khôi phục sau sự cố thực tế vẫn cần một bài kiểm thử resume riêng.
 
 ## 8. Kế hoạch hoàn thiện
 
-Sau khi tích hợp Role 2, 3 và 4, nhóm cần chạy đủ chín scenario, kiểm tra `outputs/metrics.json` rồi thay toàn bộ ô "Chờ chạy" bằng kết quả thực tế. Các việc tiếp theo gồm đặt timeout và backoff cho provider, xác thực người phê duyệt, kiểm thử khôi phục checkpoint, bổ sung tracing có cấu trúc và đo latency tại từng node.
+Các việc tiếp theo gồm đặt timeout và retry cho provider, xác thực người phê duyệt, kiểm thử khôi phục checkpoint trên ổ đĩa, đồng thời theo dõi latency và lỗi.
