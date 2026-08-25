@@ -11,7 +11,67 @@ LLM REQUIREMENT:
 
 from __future__ import annotations
 
+from typing import Literal
+
+from langchain_core.messages import HumanMessage, SystemMessage
+from pydantic import BaseModel, Field
+
+from .llm import get_llm
 from .state import AgentState, make_event
+
+
+# ─── LLM STRUCTURED OUTPUT SCHEMA ────────────────────────────────────
+class ClassificationResult(BaseModel):
+    """Structured intent classification output."""
+
+    route: Literal["simple", "tool", "missing_info", "risky", "error"] = Field(
+        description="The classified route for the user query."
+    )
+    risk_level: Literal["low", "medium", "high"] = Field(
+        description=(
+            "Risk level: 'high' for risky actions, 'medium' for error reports, "
+            "'low' for lookups and simple questions."
+        )
+    )
+    reasoning: str = Field(description="Short rationale for the classification.")
+
+
+CLASSIFY_SYSTEM_PROMPT = """You are an expert intent classifier for support ticketing.
+Classify the query into EXACTLY ONE of 5 routes based on priority:
+
+Priority Order: risky > tool > missing_info > error > simple
+
+1. 'risky' (Priority 1):
+   - Actions with side-effects: refunds, deletions, cancellations, sending emails.
+   - Examples: "Refund this customer", "Delete customer account after verification".
+   - risk_level MUST be "high".
+
+2. 'tool' (Priority 2):
+   - Information lookups: order status, package tracking, query database records.
+   - Examples: "Please lookup order status for order 12345", "Track package ABC".
+   - risk_level is "low".
+
+3. 'missing_info' (Priority 3):
+   - Vague, ambiguous, incomplete queries lacking context.
+   - Examples: "Can you fix it?", "Help me with this".
+   - risk_level is "low".
+
+4. 'error' (Priority 4):
+   - System failure reports: timeouts, crashes, unrecoverable errors.
+   - Examples: "Timeout failure while processing", "System failure cannot recover".
+   - risk_level is "medium".
+
+5. 'simple' (Priority 5):
+   - General FAQ questions answerable without tools.
+   - Examples: "How do I reset my password?", "What are your business hours?".
+   - risk_level is "low".
+
+Return the structured classification."""
+
+
+ANSWER_SYSTEM_PROMPT = """You are a helpful, professional AI customer support agent.
+Generate a concise, accurate response grounded in context (tool results, approval, query).
+Do NOT invent facts not in context. Incorporate tool results and approval clearly."""
 
 
 # ─── EXAMPLE: working node (provided for reference) ──────────────────
@@ -25,7 +85,7 @@ def intake_node(state: AgentState) -> dict:
     }
 
 
-# ─── TODO(student): implement ALL nodes below ────────────────────────
+# ─── TV2 NODES IMPLEMENTATION ────────────────────────────────────────
 
 
 def classify_node(state: AgentState) -> dict:
@@ -33,18 +93,36 @@ def classify_node(state: AgentState) -> dict:
 
     *** MUST use a real LLM call — keyword-only heuristics will lose points. ***
 
-    Use .with_structured_output() or equivalent to get reliable enum classification.
-    The LLM should classify into one of: simple, tool, missing_info, risky, error.
-
-    Hints:
-    - See llm.py for the get_llm() helper
-    - Use Pydantic model or TypedDict with .with_structured_output()
-    - Set risk_level to "high" for risky routes, "low" otherwise
-    - Priority guide: risky > tool > missing_info > error > simple
-
-    Return: {"route": str, "risk_level": str, "events": [make_event(...)]}
+    Use .with_structured_output() to get reliable enum classification.
+    The LLM classifies into one of: simple, tool, missing_info, risky, error.
     """
-    raise NotImplementedError("TODO(student): implement LLM-based classification")
+    query = state.get("query", "").strip()
+    llm = get_llm(temperature=0.0)
+    structured_llm = llm.with_structured_output(ClassificationResult)
+
+    messages = [
+        SystemMessage(content=CLASSIFY_SYSTEM_PROMPT),
+        HumanMessage(content=f"User Query: {query}"),
+    ]
+    result: ClassificationResult = structured_llm.invoke(messages)
+
+    route = result.route
+    risk_level = "high" if route == "risky" else result.risk_level
+
+    return {
+        "route": route,
+        "risk_level": risk_level,
+        "events": [
+            make_event(
+                "classify",
+                "completed",
+                f"classified as {route}",
+                route=route,
+                risk_level=risk_level,
+                reasoning=result.reasoning,
+            )
+        ],
+    }
 
 
 def tool_node(state: AgentState) -> dict:
@@ -88,26 +166,69 @@ def answer_node(state: AgentState) -> dict:
 
     *** MUST use a real LLM call — hardcoded strings will lose points. ***
 
-    The LLM should generate a helpful response grounded in available context:
+    The LLM generates a helpful response grounded in available context:
     - tool_results (if any)
     - approval decision (if risky route)
     - original query
-
-    Return: {"final_answer": str, "events": [make_event(...)]}
     """
-    raise NotImplementedError("TODO(student): implement LLM-grounded answer generation")
+    query = state.get("query", "").strip()
+    tool_results = state.get("tool_results", [])
+    approval = state.get("approval")
+    proposed_action = state.get("proposed_action")
+
+    context_parts: list[str] = [f"Original Query: {query}"]
+    if tool_results:
+        context_parts.append("Tool Execution Results:\n" + "\n".join(tool_results))
+    if proposed_action:
+        context_parts.append(f"Proposed Action: {proposed_action}")
+    if approval:
+        status_str = "Approved" if approval.get("approved") else "Rejected"
+        context_parts.append(
+            f"Approval Decision: {status_str} by {approval.get('reviewer', 'reviewer')}. "
+            f"Comment: {approval.get('comment', '')}"
+        )
+
+    context_text = "\n\n".join(context_parts)
+    llm = get_llm(temperature=0.0)
+    prompt_content = f"Context:\n{context_text}\n\nPlease generate the final customer support answer:"
+    messages = [
+        SystemMessage(content=ANSWER_SYSTEM_PROMPT),
+        HumanMessage(content=prompt_content),
+    ]
+    response = llm.invoke(messages)
+    final_answer = response.content if isinstance(response.content, str) else str(response.content)
+
+    return {
+        "final_answer": final_answer.strip(),
+        "events": [make_event("answer", "completed", "final answer generated")],
+    }
 
 
 def ask_clarification_node(state: AgentState) -> dict:
     """Ask for missing information instead of hallucinating.
 
     Generate a specific clarification question based on the vague/incomplete query.
-
-    Note: You may need to add 'pending_question' to AgentState if not present.
-
-    Return: {"pending_question": str, "final_answer": str, "events": [make_event(...)]}
     """
-    raise NotImplementedError("TODO(student): implement clarification request")
+    query = state.get("query", "").strip()
+    approval = state.get("approval")
+
+    if approval and not approval.get("approved", True):
+        comment = approval.get("comment", "Action was not approved by reviewer.")
+        clarification = (
+            f"Yêu cầu của bạn không thể thực hiện vì chưa được phê duyệt: {comment}. "
+            "Bạn có muốn đưa ra giải pháp thay thế nào không?"
+        )
+    else:
+        clarification = (
+            f"Tôi rất muốn hỗ trợ bạn, nhưng yêu cầu '{query}' hiện đang thiếu thông tin cụ thể. "
+            "Bạn vui lòng cung cấp thêm chi tiết (mã đơn, tài khoản hoặc mô tả sự cố) để xử lý nhé?"
+        )
+
+    return {
+        "pending_question": clarification,
+        "final_answer": clarification,
+        "events": [make_event("clarify", "completed", "requested clarification")],
+    }
 
 
 def risky_action_node(state: AgentState) -> dict:
