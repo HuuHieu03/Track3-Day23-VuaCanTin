@@ -39,3 +39,7 @@ Thumbs.db
 
 # Hidden grading — do NOT distribute to students
 data/grading/
+
+# Local contributor and team coordination notes
+AGENTS.md
+v1.0.0_2026-08-25_team_allocation_5_members.md
